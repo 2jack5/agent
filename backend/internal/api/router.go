@@ -20,6 +20,10 @@ func Register(g *route.RouterGroup, h *Handler, jwt *security.JWTManager) {
 		// 登出需登录态：吊销 refresh token 白名单（td.md 认证四件套均在 /auth 下）
 		auth.POST("/logout", Auth(jwt), h.Logout)
 	}
+
+	// 当前用户接口使用 Access Token，保留原项目的真实路由。
+	user := v1.Group("", Auth(jwt))
+	user.GET("/me", h.Me)
 }
 
 func Healthz() app.HandlerFunc {

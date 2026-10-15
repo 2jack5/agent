@@ -91,7 +91,7 @@ func (h *Handler) Logout(ctx context.Context, c *app.RequestContext) {
 	OK(c, nil)
 }
 
-// Me GET /api/v1/auth/me
+// Me GET /api/v1/me
 func (h *Handler) Me(ctx context.Context, c *app.RequestContext) {
 	u, err := h.svcs.Repos.User.GetByID(ctx, userID(c))
 	if err != nil {

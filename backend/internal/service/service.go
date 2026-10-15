@@ -69,7 +69,7 @@ func New(d Deps) (*Services, error) {
 	}
 
 	// ② 各业务服务
-	//s.Auth = NewAuthService(d.Repos, d.JWT, d.RDB)
+	s.Auth = NewAuthService(d.Repos, d.JWT, d.RDB)
 	//s.Models = NewModelService(d.Repos, d.Encryptor)
 	//s.Chat = NewChatService(s)
 	//s.Agent = NewAgentService(d.Repos, d.Cfg)
