@@ -3,8 +3,11 @@ package service
 import (
 	"context"
 	"my_agent/internal/config"
+	"my_agent/internal/llm"
+	"my_agent/internal/rag/engine"
 	"my_agent/internal/repo"
 	"my_agent/internal/security"
+	"my_agent/internal/tool"
 
 	"github.com/redis/go-redis/v9"
 	//"github.com/chengpeng-cp/nexus-agent/internal/config"
@@ -18,16 +21,16 @@ import (
 
 // Deps service 层依赖全集（main 装配）。
 type Deps struct {
-	Cfg   *config.Config
-	Repos *repo.Repos
-	//Gateway   *llm.Gateway
+	Cfg     *config.Config
+	Repos   *repo.Repos
+	Gateway *llm.Gateway
 	//Encryptor *security.Encryptor
 	JWT *security.JWTManager
 	RDB *redis.Client
 	//Vector    vector.Store
-	//Executor  tool.Executor
-	//Registry  tool.Registry   // 内置工具注册表（MCP 同步工具时注册执行 handler）
-	Streams StreamPublisher // 异步任务投递（worker 实现，可 nil）
+	Executor tool.Executor
+	Registry tool.Registry   // 内置工具注册表（MCP 同步工具时注册执行 handler）
+	Streams  StreamPublisher // 异步任务投递（worker 实现，可 nil）
 }
 
 // StreamPublisher 异步任务投递接口（internal/worker 实现，接口在此隔离依赖方向）。
@@ -42,16 +45,16 @@ type Services struct {
 
 	// 默认模型描述符（启动时解析一次，仅作实时解析失败时的降级兜底；
 	// 正常路径一律通过 Default*() 实时查库，保证改配置后无需重启）
-	//defaultChat      *llm.ModelDescriptor
+	defaultChat *llm.ModelDescriptor
 	//defaultEmbedding *llm.ModelDescriptor
 	//defaultRerank    *llm.ModelDescriptor
 
-	//ragEngine *engine.Engine // RAG 引擎（main 构造后注入）
+	ragEngine *engine.Engine // RAG 引擎（main 构造后注入）
 	//
-	Auth *AuthService
-	//Models   *ModelService
-	//Chat     *ChatService
-	//Agent    *AgentService
+	Auth   *AuthService
+	Models *ModelService
+	Chat   *ChatService
+	Agent  *AgentService
 	//KB       *KBService
 	//Workflow *WorkflowService
 	//MCP      *MCPService
@@ -71,7 +74,7 @@ func New(d Deps) (*Services, error) {
 	// ② 各业务服务
 	s.Auth = NewAuthService(d.Repos, d.JWT, d.RDB)
 	//s.Models = NewModelService(d.Repos, d.Encryptor)
-	//s.Chat = NewChatService(s)
+	s.Chat = NewChatService(s)
 	//s.Agent = NewAgentService(d.Repos, d.Cfg)
 	//s.KB = NewKBService(s)
 	//s.Workflow = NewWorkflowService(s)
@@ -81,15 +84,15 @@ func New(d Deps) (*Services, error) {
 	return s, nil
 }
 
-// // DefaultChat 默认对话模型（实时查库解析；失败降级用启动缓存）。
-//
-//	func (s *Services) DefaultChat() *llm.ModelDescriptor {
-//		if d, err := s.resolveByName(s.Deps.Cfg.LLM.DefaultChat, modelTypeChat); err == nil {
-//			return d
-//		}
-//		return s.defaultChat
-//	}
-//
+// DefaultChat 默认对话模型（实时查库解析；失败降级用启动缓存）。
+
+func (s *Services) DefaultChat() *llm.ModelDescriptor {
+	if d, err := s.resolveByName(s.Deps.Cfg.LLM.DefaultChat, modelTypeChat); err == nil {
+		return d
+	}
+	return s.defaultChat
+}
+
 // // DefaultEmbedding 默认向量化模型（实时解析，语义同 DefaultChat）。
 //
 //	func (s *Services) DefaultEmbedding() *llm.ModelDescriptor {

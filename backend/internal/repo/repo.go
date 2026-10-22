@@ -8,11 +8,11 @@ import (
 type Repos struct {
 	DB *gorm.DB
 
-	User *UserRepo
-	//Session  *SessionRepo
-	//Agent    *AgentRepo
-	//Tool     *ToolRepo
-	//LLM      *LLMRepo
+	User    *UserRepo
+	Session *SessionRepo
+	Agent   *AgentRepo
+	Tool    *ToolRepo
+	LLM     *LLMRepo
 	//KB       *KBRepo
 	//Memory   *MemoryRepo
 	//Workflow *WorkflowRepo
@@ -25,12 +25,12 @@ type Repos struct {
 // New 构造全部 repo（共享同一 gorm.DB 连接池）。
 func New(db *gorm.DB) *Repos {
 	return &Repos{
-		DB:   db,
-		User: &UserRepo{db: db},
-		//Session:  &SessionRepo{db: db},
-		//Agent:    &AgentRepo{db: db},
-		//Tool:     &ToolRepo{db: db},
-		//LLM:      &LLMRepo{db: db},
+		DB:      db,
+		User:    &UserRepo{db: db},
+		Session: &SessionRepo{db: db},
+		Agent:   &AgentRepo{db: db},
+		Tool:    &ToolRepo{db: db},
+		LLM:     &LLMRepo{db: db},
 		//KB:       &KBRepo{db: db},
 		//Memory:   &MemoryRepo{db: db},
 		//Workflow: &WorkflowRepo{db: db},
