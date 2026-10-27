@@ -17,6 +17,7 @@ type Config struct {
 	Log           Log           `mapstructure:"log"`
 	PG            PG            `mapstructure:"pg"`
 	Redis         Redis         `mapstructure:"redis"`
+	Kafka         Kafka         `mapstructure:"kafka"`
 	Milvus        Milvus        `mapstructure:"milvus"`
 	MinIO         MinIO         `mapstructure:"minio"`
 	JWT           JWT           `mapstructure:"jwt"`
@@ -55,6 +56,13 @@ type Redis struct {
 	DB       int    `mapstructure:"db"`
 }
 
+type Kafka struct {
+	Brokers   []string `mapstructure:"brokers"`    // Kafka 服务地址
+	DocTopic  string   `mapstructure:"doc_topic"`  // 文档处理任务
+	EvalTopic string   `mapstructure:"eval_topic"` // 评估任务
+	DLQTopic  string   `mapstructure:"dlq_topic"`  // 失败任务
+	GroupID   string   `mapstructure:"group_id"`   // 文档 Worker 消费组
+}
 type Milvus struct {
 	Mode     string `mapstructure:"mode"` // remote / lite
 	Addr     string `mapstructure:"addr"`
@@ -110,6 +118,9 @@ type Worker struct {
 	Concurrency   int           `mapstructure:"concurrency"`
 	MaxRetry      int           `mapstructure:"max_retry"`
 	ClaimInterval time.Duration `mapstructure:"claim_interval"`
+
+	// 单份文档允许处理的最长时间。
+	TaskTimeout time.Duration `mapstructure:"task_timeout"`
 }
 
 type Sandbox struct {

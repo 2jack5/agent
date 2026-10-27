@@ -56,6 +56,37 @@ type ChatInput struct {
 }
 
 // Stream 执行一次对话，返回统一事件流（handler 层转 SSE）。
+// 检查消息非空
+// ↓
+// SanitizeUserInput()
+// 清洗用户输入
+// ↓
+// ensureSession()
+// 已有会话：查询并检查是否属于当前用户
+// 没有会话：创建新会话
+// ↓
+// loadAgent()
+// 读取 Agent 配置，没有指定 Agent 时使用默认助手
+// ↓
+// 如果前端指定了模型，覆盖本次使用的模型 ID
+// ↓
+// CreateMessage()
+// 保存用户这次发来的消息
+// ↓
+// UpdateSessionStats()
+// 更新会话消息数量、最后消息时间
+// ↓
+// buildRunInput()
+// 组装模型配置、历史消息、长期记忆、知识库资料、工具等
+// ↓
+// NewAgentTrace()
+// 创建本次执行过程的记录器
+// ↓
+// pickRunner()
+// 创建普通 ReAct 或 Host 执行器
+// ↓
+// runner.Run()
+// 启动后台执行，返回 events 通道
 func (s *ChatService) Stream(ctx context.Context, userID int64, in *ChatInput) (<-chan agent.Event, error) {
 	if strings.TrimSpace(in.Content) == "" {
 		return nil, errcode.ErrInvalidParam.WithMsg("消息不能为空")
@@ -303,6 +334,10 @@ func (s *ChatService) hostDirectRunner() host.DirectRunner {
 	}
 }
 
+// ├─ 补充会话信息
+// ├─ 把事件转发出去
+// ├─ 同时收集完整回答和统计信息
+// └─ 上游结束后保存数据库
 // pump 事件泵：转发事件流，同时消费终态做持久化与统计。
 func (s *ChatService) pump(
 	ctx context.Context,

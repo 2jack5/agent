@@ -10,8 +10,14 @@ import { useAuth } from '@/stores/auth';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Spinner } from '@/components/ui/primitives';
 import { LoginPage } from '@/pages/LoginPage';
-import { M1WelcomePage, StagePlaceholder } from '@/pages/M1WelcomePage';
+import { StagePlaceholder } from '@/pages/M1WelcomePage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
+import { ChatPage } from '@/pages/chat/ChatPage';
+import { AgentsPage } from '@/pages/agents/AgentsPage';
+import { ModelsAdminPage } from '@/pages/admin/ModelsAdminPage';
+import { KnowledgeBasesPage } from '@/pages/kbs/KnowledgeBasesPage';
+import { KBDetailPage } from '@/pages/kbs/KBDetailPage';
+import { MemoriesPage } from '@/pages/memories/MemoriesPage';
 
 /** 登录守卫 */
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -51,18 +57,18 @@ export function AppRoutes() {
           </RequireAuth>
         }
       >
-        <Route path="/chat" element={<M1WelcomePage />} />
-        <Route path="/agents" element={<StagePlaceholder title="Agent" />} />
-        <Route path="/memories" element={<StagePlaceholder title="记忆" />} />
-        <Route path="/kbs" element={<StagePlaceholder title="知识库" />} />
-        <Route path="/kbs/:id" element={<StagePlaceholder title="知识库详情" />} />
+        <Route path="/chat" element={<ChatPage />} />
+        <Route path="/agents" element={<AgentsPage />} />
+        <Route path="/memories" element={<MemoriesPage />} />
+        <Route path="/kbs" element={<KnowledgeBasesPage />} />
+        <Route path="/kbs/:id" element={<KBDetailPage />} />
         <Route path="/workflows" element={<StagePlaceholder title="工作流" />} />
         <Route path="/workflows/runs" element={<StagePlaceholder title="工作流运行记录" />} />
         <Route
           path="/admin/models"
           element={
             <RequireAdmin>
-              <StagePlaceholder title="模型管理" />
+              <ModelsAdminPage />
             </RequireAdmin>
           }
         />

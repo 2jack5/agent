@@ -13,12 +13,12 @@ type Repos struct {
 	Agent   *AgentRepo
 	Tool    *ToolRepo
 	LLM     *LLMRepo
-	//KB       *KBRepo
-	//Memory   *MemoryRepo
+	KB      *KBRepo
+	Memory  *MemoryRepo
 	//Workflow *WorkflowRepo
 	//MCP      *MCPRepo
 	//A2A      *A2ARepo
-	//Usage    *UsageRepo
+	Usage *UsageRepo
 	//Eval     *EvalRepo
 }
 
@@ -31,12 +31,12 @@ func New(db *gorm.DB) *Repos {
 		Agent:   &AgentRepo{db: db},
 		Tool:    &ToolRepo{db: db},
 		LLM:     &LLMRepo{db: db},
-		//KB:       &KBRepo{db: db},
-		//Memory:   &MemoryRepo{db: db},
+		KB:      &KBRepo{db: db},
+		Memory:  &MemoryRepo{db: db},
 		//Workflow: &WorkflowRepo{db: db},
 		//MCP:      &MCPRepo{db: db},
 		//A2A:      &A2ARepo{db: db},
-		//Usage:    &UsageRepo{db: db},
+		Usage: &UsageRepo{db: db},
 		//Eval:     &EvalRepo{db: db},
 	}
 }

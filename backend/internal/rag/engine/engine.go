@@ -17,6 +17,8 @@ import (
 	"my_agent/internal/llm"
 	"my_agent/internal/model"
 	"my_agent/internal/observability"
+	"my_agent/internal/rag/loader"
+	"my_agent/internal/rag/splitter"
 	"my_agent/internal/vector"
 
 	"gorm.io/datatypes"
@@ -49,7 +51,7 @@ type Engine struct {
 	store   vector.Store
 	repo    ChunkRepo
 	cfg     *config.RAG
-	dim     int
+	dim     int // 向量维度
 
 	embedMdl  func() *llm.ModelDescriptor // Embedding 模型取值函数（每次调用实时解析，配置变更即时生效）
 	rerankMdl func() *llm.ModelDescriptor // Rerank 模型取值函数（返回 nil 时跳过 rerank）
@@ -124,7 +126,7 @@ func (e *Engine) IndexDocument(ctx context.Context, kb *model.KnowledgeBase, doc
 
 // embedChunks 批量向量化并写入 Milvus。
 func (e *Engine) embedChunks(ctx context.Context, collection string, chunks []model.DocumentChunk) error {
-	batch := e.cfg.BatchEmbed
+	batch := e.cfg.BatchEmbed // 一次多少个文本块
 	if batch <= 0 {
 		batch = 64
 	}

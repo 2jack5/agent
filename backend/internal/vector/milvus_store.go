@@ -38,6 +38,7 @@ func (s *MilvusStore) EnsureCollection(ctx context.Context, collection string, d
 	if err := s.cli.CreateCollection(ctx, schema, 2); err != nil { // 2 分片
 		return fmt.Errorf("create collection: %w", err)
 	}
+	// 给书架建目录（索引）
 	idx, err := infra.NewHNSWIndex(dim)
 	if err != nil {
 		return fmt.Errorf("hnsw index: %w", err)
@@ -46,6 +47,7 @@ func (s *MilvusStore) EnsureCollection(ctx context.Context, collection string, d
 	if err := s.cli.CreateIndex(ctx, collection, vectorField(collection), idx, false); err != nil {
 		return fmt.Errorf("create index: %w", err)
 	}
+	// 加载
 	return s.cli.LoadCollection(ctx, collection, false)
 }
 
@@ -57,7 +59,7 @@ func vectorField(collection string) string {
 	return KBDenseField
 }
 
-// Upsert 写入向量（Milvus 无原生 upsert 语义时用 insert 教学简化；幂等由主键保证）。
+// Upsert 写入向量（Milvus 无原生 upsert 语义时用 insert 教学简化；幂等由主键保证）。 看之后怎么改
 func (s *MilvusStore) Upsert(ctx context.Context, collection string, records []Record) error {
 	if len(records) == 0 {
 		return nil
