@@ -58,8 +58,8 @@ type Services struct {
 	Agent  *AgentService
 	KB     *KBService
 	//Workflow *WorkflowService
-	//MCP      *MCPService
-	//A2A      *A2AService
+	MCP    *MCPService
+	A2A    *A2AService
 	Memory *MemoryService
 }
 
@@ -79,8 +79,8 @@ func New(d Deps) (*Services, error) {
 	s.Agent = NewAgentService(d.Repos, d.Cfg)
 	s.KB = NewKBService(s)
 	//s.Workflow = NewWorkflowService(s)
-	//s.MCP = NewMCPService(s)
-	//s.A2A = NewA2AService(s)
+	s.MCP = NewMCPService(s)
+	s.A2A = NewA2AService(s)
 	s.Memory = NewMemoryService(s)
 	return s, nil
 }

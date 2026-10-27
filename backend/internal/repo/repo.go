@@ -16,8 +16,8 @@ type Repos struct {
 	KB      *KBRepo
 	Memory  *MemoryRepo
 	//Workflow *WorkflowRepo
-	//MCP      *MCPRepo
-	//A2A      *A2ARepo
+	MCP   *MCPRepo
+	A2A   *A2ARepo
 	Usage *UsageRepo
 	//Eval     *EvalRepo
 }
@@ -34,8 +34,8 @@ func New(db *gorm.DB) *Repos {
 		KB:      &KBRepo{db: db},
 		Memory:  &MemoryRepo{db: db},
 		//Workflow: &WorkflowRepo{db: db},
-		//MCP:      &MCPRepo{db: db},
-		//A2A:      &A2ARepo{db: db},
+		MCP:   &MCPRepo{db: db},
+		A2A:   &A2ARepo{db: db},
 		Usage: &UsageRepo{db: db},
 		//Eval:     &EvalRepo{db: db},
 	}

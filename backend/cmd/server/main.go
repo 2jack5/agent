@@ -4,7 +4,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"my_agent/internal/a2a"
 	"my_agent/internal/worker"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -144,13 +146,44 @@ func run() error {
 	observability.LogInfo("my_agent server started", "port", cfg.HTTP.Port, "env", cfg.Env)
 	go h.Spin()
 	<-quit
+	// ===== ⑬ A2A 对外端点（独立 net/http 端口，回调标准对话链路） =====
+	if cfg.A2A.Enabled {
+		startA2AServer(cfg, svcs)
+	}
 
+	observability.LogInfo("nexus-agent server started", "port", cfg.HTTP.Port, "env", cfg.Env)
 	observability.LogInfo("shutting down...")
 	shutdownCtx, stop := context.WithTimeout(context.Background(), cfg.HTTP.ShutdownTimeout)
 	defer stop()
 	cancel()
 	h.Shutdown(shutdownCtx)
 	return nil
+}
+
+// startA2AServer 启动 A2A 对外端点。
+func startA2AServer(cfg *config.Config, svcs *service.Services) {
+	card := &a2a.AgentCard{
+		Name:        cfg.A2A.Name,
+		Description: cfg.A2A.Desc,
+		URL:         fmt.Sprintf("http://127.0.0.1:%s/a2a", cfg.A2A.Port),
+		Version:     "2.0.0",
+		Protocol:    "0.2.9",
+		Capabilities: struct {
+			Streaming bool `json:"streaming"`
+		}{Streaming: false},
+		Skills: []a2a.AgentSkill{{Name: "chat", Description: "通用对话与工具调用"}},
+	}
+	handler := func(ctx context.Context, text string) (string, error) {
+		return svcs.A2A.InvokeLocal(ctx, 0, text)
+	}
+	mux := http.NewServeMux()
+	a2a.NewServer(card, handler).RegisterRoutes(mux)
+	go func() {
+		observability.LogInfo("a2a server listening", "port", cfg.A2A.Port)
+		if err := http.ListenAndServe(":"+cfg.A2A.Port, mux); err != nil {
+			observability.LogError("a2a server exited", "err", err.Error())
+		}
+	}()
 }
 
 // kbSearchFunc 复用同一个 RAG 引擎，为工具执行器提供知识库检索。

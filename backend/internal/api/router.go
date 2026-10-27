@@ -77,6 +77,22 @@ func Register(g *route.RouterGroup, h *Handler, jwt *security.JWTManager) {
 		admin.PUT("/models/:id", h.UpdateModel)
 		admin.DELETE("/models/:id", h.DeleteModel)
 
+		// MCP
+		admin.GET("/mcp/servers", h.ListMCPServers)
+		admin.POST("/mcp/servers", h.CreateMCPServer)
+		admin.PUT("/mcp/servers/:id", h.UpdateMCPServer)
+		admin.DELETE("/mcp/servers/:id", h.DeleteMCPServer)
+		admin.POST("/mcp/servers/:id/sync", h.SyncMCPServer)
+		admin.POST("/mcp/servers/:id/health", h.CheckMCPServer)
+		admin.POST("/mcp/servers/:id/call", h.CallMCPTool)
+
+		// A2A
+		admin.GET("/a2a/agents", h.ListA2AAgents)
+		admin.POST("/a2a/agents", h.RegisterA2AAgent)
+		admin.DELETE("/a2a/agents/:id", h.DeleteA2AAgent)
+		admin.POST("/a2a/agents/:id/health", h.CheckA2AAgent)
+		admin.POST("/a2a/agents/:id/tasks", h.SendA2ATask)
+
 	}
 
 	// 当前用户接口使用 Access Token，保留原项目的真实路由。
