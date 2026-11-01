@@ -65,7 +65,7 @@ func (h *HostRouter) Run(ctx context.Context, in *runtime.RunInput) (<-chan agen
 func (h *HostRouter) loop(ctx context.Context, in *runtime.RunInput, events chan<- agent.Event) {
 	defer close(events)
 
-	question := lastUserMessage(in.Messages)
+	question := lastUserMessage(in.Messages) // 为什么
 	if question == "" {
 		send(events, agent.EvtError(errcode.ErrInvalidParam.Code, "empty question"))
 		return

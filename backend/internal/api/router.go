@@ -63,6 +63,18 @@ func Register(g *route.RouterGroup, h *Handler, jwt *security.JWTManager) {
 		user.POST("/kbs/:id/retrieve", h.TestRetrieve)
 		user.GET("/documents/:docID/chunks", h.ListChunks)
 
+		// 工作流
+		user.GET("/workflows", h.ListWorkflows)
+		user.GET("/workflows/:id", h.GetWorkflow)
+		user.POST("/workflows", h.CreateWorkflow)
+		user.PUT("/workflows/:id", h.UpdateWorkflow)
+		user.DELETE("/workflows/:id", h.DeleteWorkflow)
+		user.POST("/workflows/validate", h.ValidateWorkflow)
+		user.POST("/workflows/run", h.RunWorkflow)
+		user.GET("/workflows/runs", h.ListRuns)
+		user.GET("/workflows/runs/:id", h.GetRun)
+		user.POST("/workflows/runs/:id/approve", h.ApproveRun)
+
 	}
 	// ---- 管理接口（admin）----
 	admin := v1.Group("/admin", Auth(jwt), AdminOnly())

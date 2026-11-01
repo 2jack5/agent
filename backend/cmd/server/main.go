@@ -1,4 +1,4 @@
-// M3 API 入口：增量接入知识库和长期记忆，保留已有 Kafka 任务链与 M2 能力。
+// M4 API 入口：接入 MCP 和 A2A，保留已有 Kafka、RAG 和长期记忆能力。
 package main
 
 import (
@@ -115,6 +115,9 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("services: %w", err)
 	}
+	// MCP 远程工具必须注册到 Executor 共用的注册表中。
+	svcs.MCP.SetRegistry(reg)
+
 	// RAG 模型回调必须在 Services 创建之后注入。
 	ragEngine := engine.New(gateway, store, repos.KB, &cfg.RAG, cfg.Milvus.Dim)
 	ragEngine.SetModels(svcs.DefaultEmbedding, svcs.DefaultRerank)
@@ -139,19 +142,19 @@ func run() error {
 	root.GET("/metrics", api.Metrics())
 	api.Register(root, api.New(svcs), jwtMgr)
 
-	// ⑤ 注册退出信号后开始监听，沿用原项目的 Spin/Shutdown 流程。
+	// ⑤ A2A 对外端点（独立 net/http 端口，回调标准对话链路）。
+	if cfg.A2A.Enabled {
+		startA2AServer(cfg, svcs)
+	}
+
+	// ⑥ 注册退出信号后开始监听，沿用原项目的 Spin/Shutdown 流程。
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(quit)
 	observability.LogInfo("my_agent server started", "port", cfg.HTTP.Port, "env", cfg.Env)
 	go h.Spin()
 	<-quit
-	// ===== ⑬ A2A 对外端点（独立 net/http 端口，回调标准对话链路） =====
-	if cfg.A2A.Enabled {
-		startA2AServer(cfg, svcs)
-	}
 
-	observability.LogInfo("nexus-agent server started", "port", cfg.HTTP.Port, "env", cfg.Env)
 	observability.LogInfo("shutting down...")
 	shutdownCtx, stop := context.WithTimeout(context.Background(), cfg.HTTP.ShutdownTimeout)
 	defer stop()

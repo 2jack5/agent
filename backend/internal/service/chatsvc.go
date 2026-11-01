@@ -521,6 +521,7 @@ func intOf(v any) int {
 	return 0
 }
 
+// 把指针类型转换成 int64类型
 func derefOrZero(p *int64) int64 {
 	if p == nil {
 		return 0

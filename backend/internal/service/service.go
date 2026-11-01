@@ -52,15 +52,15 @@ type Services struct {
 
 	ragEngine *engine.Engine // RAG 引擎（main 构造后注入）
 	//
-	Auth   *AuthService
-	Models *ModelService
-	Chat   *ChatService
-	Agent  *AgentService
-	KB     *KBService
-	//Workflow *WorkflowService
-	MCP    *MCPService
-	A2A    *A2AService
-	Memory *MemoryService
+	Auth     *AuthService
+	Models   *ModelService
+	Chat     *ChatService
+	Agent    *AgentService
+	KB       *KBService
+	Workflow *WorkflowService
+	MCP      *MCPService
+	A2A      *A2AService
+	Memory   *MemoryService
 }
 
 // New 装配全部业务服务。
