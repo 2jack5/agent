@@ -17,6 +17,11 @@ import (
 	"my_agent/internal/pkg/errcode"
 	"my_agent/internal/tool"
 	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Runner Agent 运行器统一接口（Host/Expert/CLI 都面向它编程）。
@@ -84,20 +89,37 @@ func (r *ReactRunner) loop(ctx context.Context, in *RunInput, toolDefs []llm.Too
 	promptTokens, completionTokens := 0, 0
 	var finalContent, finishReason, usedModel string
 
+	// activeSpan 只保留当前轮；提前 return 时由 defer 收尾。
+	var activeSpan trace.Span
+	defer func() {
+		if activeSpan != nil {
+			activeSpan.End()
+		}
+	}()
 	for step := 0; step < in.MaxIterations; step++ {
+		tracer := otel.Tracer("nexus-agent/chat")
+		iterationCtx, iterationSpan := tracer.Start(
+			runCtx,
+			"agent.iteration",
+			trace.WithAttributes(attribute.Int("agent.iteration", step+1)),
+		)
+
+		activeSpan = iterationSpan
 		if err := runCtx.Err(); err != nil {
+			iterationSpan.SetStatus(codes.Error, "agent timeout")
 			emit(events, agent.EvtError(errcode.ErrModelTimeout.Code, "运行超时"))
 			return
 		}
 
 		// ---- 思考：流式调用模型 ----
-		stepCtx, stepCancel := context.WithTimeout(runCtx, r.stepTimeout)
-		stream, _, err := r.gateway.ChatStream(stepCtx, in.Primary, in.Fallback, &llm.ChatRequest{
+		stepCtx, stepCancel := context.WithTimeout(iterationCtx, r.stepTimeout)
+		stream, used, err := r.gateway.ChatStream(stepCtx, in.Primary, in.Fallback, &llm.ChatRequest{
 			Messages: in.Messages,
 			Tools:    toolDefs,
 			Stream:   true,
 		})
 		if err != nil {
+			iterationSpan.SetStatus(codes.Error, "model setup failed")
 			stepCancel()
 			// 修复：上游错误必须落日志，否则 SSE 只透出 90001，根因无法排查
 			observability.LogError("agent llm call failed", "agent", in.AgentName,
@@ -110,6 +132,12 @@ func (r *ReactRunner) loop(ctx context.Context, in *RunInput, toolDefs []llm.Too
 		var content, reasoning string
 		var calls []llm.ToolCall
 		for ev := range stream {
+			if ev.Error != nil {
+				iterationSpan.SetStatus(codes.Error, "model stream failed")
+				stepCancel()
+				emit(events, agent.EvtError(errcode.ErrInternal.Code, "模型生成失败"))
+				return
+			}
 			if ev.Content != "" {
 				content += ev.Content
 				emit(events, agent.EvtDelta(ev.Content))
@@ -129,12 +157,22 @@ func (r *ReactRunner) loop(ctx context.Context, in *RunInput, toolDefs []llm.Too
 				finishReason = ev.FinishReason
 			}
 		}
+		if err := stepCtx.Err(); err != nil {
+			iterationSpan.SetStatus(codes.Error, "model stream canceled")
+			stepCancel()
+			emit(events, agent.EvtError(errcode.ErrModelTimeout.Code, "模型调用已取消或超时"))
+			return
+		}
 		stepCancel()
 
 		// ---- 终止：无工具调用，模型给出最终答案 ----
 		if len(calls) == 0 {
 			finalContent = content
-			usedModel = in.Primary.ModelName
+			if used != nil {
+				usedModel = used.ModelName
+			}
+			iterationSpan.End()
+			activeSpan = nil
 			break
 		}
 
@@ -160,7 +198,10 @@ func (r *ReactRunner) loop(ctx context.Context, in *RunInput, toolDefs []llm.Too
 				_ = parseArgsForTrace(step, tc.ArgsJSON)
 			}
 
-			res := r.exec.Invoke(runCtx, in.ToolsJSON, tc.Name, tc.ArgsJSON)
+			res := r.exec.Invoke(iterationCtx, in.ToolsJSON, tc.Name, tc.ArgsJSON)
+			if res.Status != "ok" {
+				iterationSpan.SetStatus(codes.Error, "tool failed")
+			}
 			emit(events, agent.EvtToolResult(tc.ID, res.Output, res.Elapsed, res.Status))
 
 			if in.Trace != nil && step != nil {
@@ -172,6 +213,9 @@ func (r *ReactRunner) loop(ctx context.Context, in *RunInput, toolDefs []llm.Too
 				Role: llm.RoleTool, ToolCallID: tc.ID, Content: res.Output,
 			})
 		}
+		// 本轮模型和工具全部完成后立即结束，不累积到整个 loop 返回。
+		iterationSpan.End()
+		activeSpan = nil
 	}
 
 	// 迭代耗尽仍未终止

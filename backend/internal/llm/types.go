@@ -60,6 +60,7 @@ type ChatResponse struct {
 
 // StreamEvent 流式事件（网关到调用方的统一流协议）。
 type StreamEvent struct {
+	Error            error      // 流中失败沿通道传递，避免把异常断流当成功。
 	Content          string     // 增量文本
 	ReasoningContent string     // 增量推理内容
 	ToolCalls        []ToolCall // 聚合完成的工具调用（最后一次出现）

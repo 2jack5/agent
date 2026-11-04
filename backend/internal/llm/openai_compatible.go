@@ -380,6 +380,15 @@ func (p *openaiCompatibleProvider) consumeStream(ctx context.Context, body io.Re
 		}
 	}
 
+	// 读取失败或没有结束标记时报告错误，不伪造成功终帧。
+	if err := scanner.Err(); err != nil {
+		emit(StreamEvent{Error: err})
+		return
+	}
+	if finish == "" {
+		emit(StreamEvent{Error: errIncompleteStream})
+		return
+	}
 	// 终帧：携带聚合完成的工具调用与用量
 	calls := make([]ToolCall, 0, len(aggs))
 	for i := 0; i < len(aggs); i++ {

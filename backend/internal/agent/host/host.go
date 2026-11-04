@@ -15,6 +15,11 @@ package host
 
 import (
 	"context"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+
 	"encoding/json"
 	"fmt"
 	"my_agent/internal/agent"
@@ -64,16 +69,27 @@ func (h *HostRouter) Run(ctx context.Context, in *runtime.RunInput) (<-chan agen
 // loop Host 主流程。
 func (h *HostRouter) loop(ctx context.Context, in *runtime.RunInput, events chan<- agent.Event) {
 	defer close(events)
+	// 在后台真实执行期间记录，而不是在返回通道的 Run 中提前结束。
+	ctx, span := otel.Tracer("my_agent/host").Start(ctx, "host.run")
+	defer span.End()
 
 	question := lastUserMessage(in.Messages) // 为什么
 	if question == "" {
+		span.SetStatus(codes.Error, "empty question")
 		send(events, agent.EvtError(errcode.ErrInvalidParam.Code, "empty question"))
 		return
 	}
 
 	// ① 意图路由：让 Host 模型从专家清单中选人
-	expert, err := h.route(ctx, in, question)
+	routeCtx, routeSpan := otel.Tracer("my_agent/host").Start(ctx, "host.route")
+	expert, err := h.route(routeCtx, in, question)
 	if err != nil {
+		routeSpan.SetStatus(codes.Error, "route failed")
+		span.SetStatus(codes.Error, "route failed")
+	}
+	routeSpan.End()
+	if err != nil {
+		trace.SpanFromContext(ctx).SetStatus(codes.Error, "host execution failed")
 		send(events, agent.EvtError(errcode.From(err).Code, errcode.From(err).Message))
 		return
 	}
@@ -84,6 +100,7 @@ func (h *HostRouter) loop(ctx context.Context, in *runtime.RunInput, events chan
 		return
 	}
 
+	span.SetAttributes(attribute.String("agent.expert", expert.Name))
 	// ② 委派事件 + 决策链
 	send(events, agent.EvtAgentEvent("delegate", expert.Name, expert.Description))
 	send(events, agent.Evt(agent.TypeMeta, map[string]any{"expert": expert.Name}))
@@ -100,13 +117,20 @@ func (h *HostRouter) loop(ctx context.Context, in *runtime.RunInput, events chan
 	expertInput.Messages = buildExpertMessages(expert.System, in.Messages)
 
 	// ④ 执行并透传事件
-	expertEvents, err := expert.Runner.Run(ctx, &expertInput)
+	expertCtx, expertSpan := otel.Tracer("my_agent/host").Start(ctx, "host.expert")
+	defer expertSpan.End()
+	expertEvents, err := expert.Runner.Run(expertCtx, &expertInput)
 	if err != nil {
+		trace.SpanFromContext(ctx).SetStatus(codes.Error, "host execution failed")
 		send(events, agent.EvtError(errcode.From(err).Code, errcode.From(err).Message))
 		return
 	}
 	var final strings.Builder
 	for ev := range expertEvents {
+		if ev.Type == agent.TypeError {
+			expertSpan.SetStatus(codes.Error, "expert failed")
+			span.SetStatus(codes.Error, "expert failed")
+		}
 		if ev.Type == agent.TypeDelta {
 			final.WriteString(str(ev.Data["content"]))
 		}
@@ -162,10 +186,14 @@ func (h *HostRouter) forwardDirect(ctx context.Context, in *runtime.RunInput, ev
 	send(events, agent.EvtAgentEvent("delegate", "host", "host 直答"))
 	evts, err := h.directRunner(ctx, in)
 	if err != nil {
+		trace.SpanFromContext(ctx).SetStatus(codes.Error, "host execution failed")
 		send(events, agent.EvtError(errcode.From(err).Code, errcode.From(err).Message))
 		return
 	}
 	for ev := range evts {
+		if ev.Type == agent.TypeError {
+			trace.SpanFromContext(ctx).SetStatus(codes.Error, "direct runner failed")
+		}
 		send(events, ev)
 	}
 }

@@ -15,6 +15,9 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
+	oteltrace "go.opentelemetry.io/otel/trace"
 	"my_agent/internal/agent"
 	"my_agent/internal/agent/host"
 	"my_agent/internal/agent/runtime"
@@ -87,7 +90,24 @@ type ChatInput struct {
 // ↓
 // runner.Run()
 // 启动后台执行，返回 events 通道
-func (s *ChatService) Stream(ctx context.Context, userID int64, in *ChatInput) (<-chan agent.Event, error) {
+func (s *ChatService) Stream(ctx context.Context, userID int64, in *ChatInput) (result <-chan agent.Event, retErr error) {
+	// 创建聊天 Span；返回的新 ctx 携带追踪信息，继续传给 Runner 和模型调用。
+	tracer := otel.Tracer("nexus-agent/chat")
+	ctx, span := tracer.Start(ctx, "chat.run")
+
+	// false：当前函数负责结束 Span；true：已交给后台事件泵负责结束。
+	handedOff := false
+	defer func() {
+		if !handedOff {
+			// 命名返回值 retErr 能接收到下面 return 返回的准备阶段错误。
+			if retErr != nil {
+				span.RecordError(retErr)
+				span.SetStatus(codes.Error, "chat preparation failed")
+			}
+			span.End()
+		}
+	}()
+
 	if strings.TrimSpace(in.Content) == "" {
 		return nil, errcode.ErrInvalidParam.WithMsg("消息不能为空")
 	}
@@ -137,7 +157,13 @@ func (s *ChatService) Stream(ctx context.Context, userID int64, in *ChatInput) (
 
 	// ⑥ 事件包装：meta 先行 → 转发 → 终态落库
 	out := make(chan agent.Event, 128)
-	go s.pump(ctx, session, ag, userMsg, refs, runInput.Trace, events, out)
+	// Stream 返回通道时聊天还没完成，不能在这里提前结束 Span。
+	handedOff = true
+	go func() {
+		// 等事件转发和终态保存完成后，再结束本次聊天 Span。
+		defer span.End()
+		s.pump(ctx, session, ag, userMsg, refs, runInput.Trace, events, out)
+	}()
 	return out, nil
 }
 
@@ -346,6 +372,8 @@ func (s *ChatService) pump(
 	events <-chan agent.Event, out chan<- agent.Event,
 ) {
 	defer close(out)
+	// 从 ctx 取出 Stream 创建的 Span；包别名避免与 trace 参数重名。
+	span := oteltrace.SpanFromContext(ctx)
 	repo := s.svcs.Deps.Repos.Session
 
 	// meta 先行：前端立即拿到会话与引用信息
@@ -361,6 +389,9 @@ func (s *ChatService) pump(
 	)
 	for ev := range events {
 		switch ev.Type {
+		case agent.TypeError:
+			// 流成功建立后仍可能失败，必须在实际消费事件时标记。
+			span.SetStatus(codes.Error, "chat stream failed")
 		case agent.TypeDelta:
 			content += strVal(ev.Data["content"])
 		case agent.TypeReasoning:
@@ -380,6 +411,8 @@ func (s *ChatService) pump(
 		send(out, ev)
 	}
 	if !terminal {
+		// 没收到正常终态就关闭通道，也属于异常结束。
+		span.SetStatus(codes.Error, "chat stream ended without terminal event")
 		// 上游异常退出：补一个 error 终态，保证 SSE 协议完整
 		send(out, agent.EvtError(errcode.ErrInternal.Code, "流异常中断"))
 	}
@@ -409,6 +442,8 @@ func (s *ChatService) pump(
 		}
 	}
 	if err := repo.CreateMessage(context.Background(), assistant); err != nil {
+		// 保存最终回答失败，也标记到本次聊天 Span。
+		span.SetStatus(codes.Error, "save assistant message failed")
 		observability.LogWarn("persist assistant message failed", "session_id", session.ID, "error", err.Error())
 	}
 	_ = repo.UpdateSessionStats(context.Background(), session.ID, int64(promptTk+completionTk))

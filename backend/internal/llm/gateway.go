@@ -7,6 +7,11 @@ package llm
 
 import (
 	"context"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+
 	"fmt"
 	"my_agent/internal/config"
 	"my_agent/internal/observability"
@@ -59,7 +64,7 @@ func (g *Gateway) providerFor(code string) (Provider, *CircuitBreaker, *Semaphor
 }
 
 // runWithGuard 带熔断+限流+重试+指标 的统一执行管道。
-func (g *Gateway) runWithGuard(ctx context.Context, desc *ModelDescriptor, fn func(p Provider) error) error {
+func (g *Gateway) runWithGuard(ctx context.Context, desc *ModelDescriptor, fn func(context.Context, Provider) error) error {
 	// 初始化
 	p, breaker, sem := g.providerFor(desc.ProviderCode)
 
@@ -74,7 +79,18 @@ func (g *Gateway) runWithGuard(ctx context.Context, desc *ModelDescriptor, fn fu
 			return aErr
 		}
 		defer sem.Release()
-		return fn(p)
+		// 每次重试独立记录，包含排队；不记录提示词和密钥。
+		attemptCtx, attemptSpan := otel.Tracer("my_agent/llm").Start(ctx, "llm.attempt",
+			trace.WithAttributes(attribute.String("llm.model", desc.ModelName), attribute.String("llm.provider", desc.ProviderCode)))
+		attemptErr := fn(attemptCtx, p)
+		if attemptErr != nil {
+			attemptSpan.SetStatus(codes.Error, "model attempt failed")
+		}
+		// 流式成功时，回调内的包装器负责结束尝试 Span。
+		if attemptErr != nil || !isStreamAttempt(attemptCtx) {
+			attemptSpan.End()
+		}
+		return attemptErr
 	})
 
 	// 指标与熔断记录
@@ -92,7 +108,7 @@ func (g *Gateway) runWithGuard(ctx context.Context, desc *ModelDescriptor, fn fu
 
 // Chat 非流式对话（含失败转移）。
 // primary 失败且配置了 fallback 时自动切换，返回实际使用的描述符。
-func (g *Gateway) Chat(ctx context.Context, primary, fallback *ModelDescriptor, req *ChatRequest) (*ChatResponse, *ModelDescriptor, error) {
+func (g *Gateway) chatLogical(ctx context.Context, primary, fallback *ModelDescriptor, req *ChatRequest) (*ChatResponse, *ModelDescriptor, error) {
 	resp, used, err := g.chatOnce(ctx, primary, req)
 	if err == nil {
 		return resp, used, nil
@@ -109,7 +125,7 @@ func (g *Gateway) Chat(ctx context.Context, primary, fallback *ModelDescriptor, 
 
 func (g *Gateway) chatOnce(ctx context.Context, desc *ModelDescriptor, req *ChatRequest) (*ChatResponse, *ModelDescriptor, error) {
 	var resp *ChatResponse
-	err := g.runWithGuard(ctx, desc, func(p Provider) error {
+	err := g.runWithGuard(ctx, desc, func(ctx context.Context, p Provider) error {
 		var e error
 		resp, e = p.Chat(ctx, desc, req)
 		return e
@@ -124,7 +140,7 @@ func (g *Gateway) chatOnce(ctx context.Context, desc *ModelDescriptor, req *Chat
 // ChatStream 流式对话（含失败转移）。
 //
 // 失败转移策略：仅在"首事件到达前"失败时切换 fallback（流中失败无法重放）。
-func (g *Gateway) ChatStream(ctx context.Context, primary, fallback *ModelDescriptor, req *ChatRequest) (<-chan StreamEvent, *ModelDescriptor, error) {
+func (g *Gateway) streamLogical(ctx context.Context, primary, fallback *ModelDescriptor, req *ChatRequest) (<-chan StreamEvent, *ModelDescriptor, error) {
 	events, err := g.streamOnce(ctx, primary, req)
 	if err == nil {
 		return events, primary, nil
@@ -142,10 +158,14 @@ func (g *Gateway) ChatStream(ctx context.Context, primary, fallback *ModelDescri
 
 func (g *Gateway) streamOnce(ctx context.Context, desc *ModelDescriptor, req *ChatRequest) (<-chan StreamEvent, error) {
 	var events <-chan StreamEvent
+	ctx = context.WithValue(ctx, streamAttemptKey{}, true)
 	// 带熔断+限流+重试+指标 的统一执行管道。
-	err := g.runWithGuard(ctx, desc, func(p Provider) error {
+	err := g.runWithGuard(ctx, desc, func(ctx context.Context, p Provider) error {
 		var e error
 		events, e = p.ChatStream(ctx, desc, req)
+		if e == nil {
+			events = observeStream(ctx, events, trace.SpanFromContext(ctx))
+		}
 		return e
 	})
 	if err != nil {
@@ -157,7 +177,7 @@ func (g *Gateway) streamOnce(ctx context.Context, desc *ModelDescriptor, req *Ch
 // Embed 向量化。
 func (g *Gateway) Embed(ctx context.Context, desc *ModelDescriptor, texts []string) ([][]float32, error) {
 	var vectors [][]float32
-	err := g.runWithGuard(ctx, desc, func(p Provider) error {
+	err := g.runWithGuard(ctx, desc, func(ctx context.Context, p Provider) error {
 		var e error
 		vectors, e = p.Embed(ctx, desc, texts)
 		return e
@@ -168,7 +188,7 @@ func (g *Gateway) Embed(ctx context.Context, desc *ModelDescriptor, texts []stri
 // Rerank 重排序。
 func (g *Gateway) Rerank(ctx context.Context, desc *ModelDescriptor, query string, docs []string, topN int) ([]RerankResult, error) {
 	var results []RerankResult
-	err := g.runWithGuard(ctx, desc, func(p Provider) error {
+	err := g.runWithGuard(ctx, desc, func(ctx context.Context, p Provider) error {
 		var e error
 		results, e = p.Rerank(ctx, desc, query, docs, topN)
 		return e

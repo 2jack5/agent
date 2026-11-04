@@ -10,14 +10,16 @@ import { useAuth } from '@/stores/auth';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Spinner } from '@/components/ui/primitives';
 import { LoginPage } from '@/pages/LoginPage';
-import { StagePlaceholder } from '@/pages/M1WelcomePage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { ChatPage } from '@/pages/chat/ChatPage';
 import { AgentsPage } from '@/pages/agents/AgentsPage';
 import { ModelsAdminPage } from '@/pages/admin/ModelsAdminPage';
+import { IntegrationsPage } from '@/pages/admin/IntegrationsPage';
 import { KnowledgeBasesPage } from '@/pages/kbs/KnowledgeBasesPage';
 import { KBDetailPage } from '@/pages/kbs/KBDetailPage';
 import { MemoriesPage } from '@/pages/memories/MemoriesPage';
+import { WorkflowsPage } from '@/pages/workflows/WorkflowsPage';
+import { WorkflowRunsPage } from '@/pages/workflows/WorkflowRunsPage';
 
 /** 登录守卫 */
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -62,8 +64,8 @@ export function AppRoutes() {
         <Route path="/memories" element={<MemoriesPage />} />
         <Route path="/kbs" element={<KnowledgeBasesPage />} />
         <Route path="/kbs/:id" element={<KBDetailPage />} />
-        <Route path="/workflows" element={<StagePlaceholder title="工作流" />} />
-        <Route path="/workflows/runs" element={<StagePlaceholder title="工作流运行记录" />} />
+        <Route path="/workflows" element={<WorkflowsPage />} />
+        <Route path="/workflows/runs" element={<WorkflowRunsPage />} />
         <Route
           path="/admin/models"
           element={
@@ -76,7 +78,7 @@ export function AppRoutes() {
           path="/admin/integrations"
           element={
             <RequireAdmin>
-              <StagePlaceholder title="集成中心" />
+              <IntegrationsPage />
             </RequireAdmin>
           }
         />

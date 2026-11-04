@@ -6,6 +6,7 @@
 #   docker compose --profile full up -d          # + Ollama/SearXNG
 #   docker compose --profile obs up -d           # + Jaeger/Prometheus/Grafana
 
+# 宿主机端口与原项目错开；容器内部端口保持不变。
 name: my-agent
 
 services:
@@ -16,18 +17,18 @@ services:
     environment:
       POSTGRES_USER: nexus
       POSTGRES_PASSWORD: nexus123
-      POSTGRES_DB: nexus_agent
-    ports: ["5432:5432"]
+      POSTGRES_DB: my_agent
+    ports: ["5433:5432"]
     volumes: [pgdata:/var/lib/postgresql/data, ./init:/docker-entrypoint-initdb.d:ro]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U nexus"]
+      test: ["CMD-SHELL", "pg_isready -U nexus -d my_agent"]
       interval: 5s
       retries: 10
 
   redis:
     image: redis:7-alpine
     profiles: [core, full, obs]
-    ports: ["6380:6379"]
+    ports: ["6381:6379"]
     volumes: [redisdata:/data]
 
   minio:
@@ -39,7 +40,7 @@ services:
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
-    ports: ["9000:9000", "9001:9001"]
+    ports: ["19000:9000", "19001:9001"]
     volumes: [miniodata:/data]
 
   # ---- 检索与模型（RAG/MCP 相关集） ----
@@ -59,7 +60,7 @@ services:
       ETCD_ENDPOINTS: etcd:2379
       MINIO_ADDRESS: milvus-minio:9000
     depends_on: [etcd, milvus-minio]
-    ports: ["19530:19530"]
+    ports: ["19531:19530"]
     volumes: [milvusdata:/var/lib/milvus]
 
   milvus-minio: # Milvus 专用 MinIO（与业务 MinIO 隔离）
@@ -76,13 +77,13 @@ services:
   ollama: # 教学本地模型（local: true 时全流程零外部依赖）
     image: ollama/ollama:latest
     profiles: [full]
-    ports: ["11434:11434"]
+    ports: ["11435:11434"]
     volumes: [ollamadata:/root/.ollama]
 
   searxng: # web_search 工具后端
     image: searxng/searxng:latest
     profiles: [full]
-    ports: ["8081:8080"]
+    ports: ["18081:8080"]
     volumes: ["./searxng:/etc/searxng:ro"]
 
   # ---- 观测栈 ----
@@ -91,12 +92,12 @@ services:
     profiles: [obs]
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
-    ports: ["4318:4318", "16686:16686"]
+    ports: ["14318:4318", "16687:16686"]
 
   prometheus:
     image: prom/prometheus:v2.53.0
     profiles: [obs]
-    ports: ["9090:9090"]
+    ports: ["19090:9090"]
     volumes: ["./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro"]
 
   grafana:
@@ -104,7 +105,7 @@ services:
     profiles: [obs]
     environment:
       GF_SECURITY_ADMIN_PASSWORD: admin
-    ports: ["3004:3000"]
+    ports: ["13004:3000"]
     volumes: [grafanadata:/var/lib/grafana, "./grafana/provisioning:/etc/grafana/provisioning:ro"]
 
 volumes:

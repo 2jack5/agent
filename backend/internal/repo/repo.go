@@ -19,7 +19,7 @@ type Repos struct {
 	MCP      *MCPRepo
 	A2A      *A2ARepo
 	Usage    *UsageRepo
-	//Eval     *EvalRepo
+	Eval     *EvalRepo
 }
 
 // New 构造全部 repo（共享同一 gorm.DB 连接池）。
@@ -37,6 +37,6 @@ func New(db *gorm.DB) *Repos {
 		MCP:      &MCPRepo{db: db},
 		A2A:      &A2ARepo{db: db},
 		Usage:    &UsageRepo{db: db},
-		//Eval:     &EvalRepo{db: db},
+		Eval:     &EvalRepo{db: db},
 	}
 }

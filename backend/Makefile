@@ -1,4 +1,4 @@
-# M1～M3 常用命令；保留现有 Kafka 任务实现。
+# M1～M6 常用命令；保留现有 Kafka 任务实现。
 GO ?= go
 DOCKER ?= docker
 COMPOSE_FILE := deployments/docker-compose.yaml
@@ -14,6 +14,10 @@ help:
 	@echo "make run-cli       启动原项目的 CLI 入口"
 	@echo "make test          检查当前全部 Go 包"
 	@echo "make compose-down  停止核心存储，保留数据卷"
+	@echo "make compose-up    启动 full/obs 基础设施（Kafka 另行启动）"
+	@echo "make cover         运行 race 测试并生成覆盖率（需 C 工具链）"
+	@echo "make lint          运行 golangci-lint（需自行安装）"
+	@echo "make swag          生成 Swagger 文件（需自行安装 swag）"
 
 compose-core:
 	$(DOCKER) compose -f $(COMPOSE_FILE) --profile core up -d
@@ -44,3 +48,19 @@ test:
 	$(GO) test ./...
 
 .PHONY: help compose-core compose-down migrate run run-worker run-cli build test
+
+# 保留已有 compose-down 的停止/保留卷行为，不引入原 down -v。
+compose-up:
+	$(DOCKER) compose -f $(COMPOSE_FILE) --profile full --profile obs up -d
+
+cover:
+	$(GO) test ./... -race -coverprofile=coverage.out
+	$(GO) tool cover -html=coverage.out -o coverage.html
+
+lint:
+	golangci-lint run ./...
+
+swag:
+	swag init -g cmd/server/main.go -o api/openapi
+
+.PHONY: compose-up cover lint swag

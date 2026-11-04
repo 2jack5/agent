@@ -78,7 +78,7 @@ func New(d Deps) (*Services, error) {
 	s.Chat = NewChatService(s)
 	s.Agent = NewAgentService(d.Repos, d.Cfg)
 	s.KB = NewKBService(s)
-	//s.Workflow = NewWorkflowService(s)
+	s.Workflow = NewWorkflowService(s)
 	s.MCP = NewMCPService(s)
 	s.A2A = NewA2AService(s)
 	s.Memory = NewMemoryService(s)
