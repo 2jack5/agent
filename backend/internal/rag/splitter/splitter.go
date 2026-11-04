@@ -66,8 +66,13 @@ func splitByHeading(content string) []string {
 // separators 分隔符优先级。
 var separators = []string{"\n\n", "\n", "。", ".", " ", ""}
 
-// recursiveSplit 递归切分核心。
+// recursiveSplit 从优先级最高的分隔符开始切分。
 func (s *Splitter) recursiveSplit(text string, page int) []Chunk {
+	return s.recursiveSplitFrom(text, page, 0)
+}
+
+// recursiveSplitFrom 只向更细的分隔符递进，避免对同一段文字无限递归。
+func (s *Splitter) recursiveSplitFrom(text string, page, start int) []Chunk {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil
@@ -76,8 +81,12 @@ func (s *Splitter) recursiveSplit(text string, page int) []Chunk {
 		return []Chunk{{Content: text, Page: page}}
 	}
 
-	// 找到能切分的第一个分隔符
-	for _, sep := range separators {
+	// 找到当前级别能使用的分隔符；空分隔符交给下面的按长度硬切。
+	for i := start; i < len(separators); i++ {
+		sep := separators[i]
+		if sep == "" {
+			break
+		}
 		if !strings.Contains(text, sep) {
 			continue
 		}
@@ -86,9 +95,9 @@ func (s *Splitter) recursiveSplit(text string, page int) []Chunk {
 		var buf strings.Builder
 
 		for _, p := range parts {
-			// 单段就超长：递归更细粒度
-			if len([]rune(p)) > s.ChunkSize && sep != "" {
-				chunks = append(chunks, s.recursiveSplit(p, page)...)
+			// 单段仍超长：从下一级分隔符继续，不能重新从头选择同一分隔符。
+			if len([]rune(p)) > s.ChunkSize {
+				chunks = append(chunks, s.recursiveSplitFrom(p, page, i+1)...)
 				continue
 			}
 			// 缓冲拼接：超过块大小则收块，并回填 overlap

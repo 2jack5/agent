@@ -2,7 +2,7 @@
 # 分组点亮：core = 后端必需存储 / full = 加本地模型与搜索 / obs = 加观测栈
 #
 # 用法：
-#   docker compose --profile core up -d          # PG/Redis/MinIO/Milvus 及依赖
+#   docker compose --profile core up -d          # PG/Redis/MinIO/Milvus/Kafka 及依赖
 #   docker compose --profile full up -d          # + Ollama/SearXNG
 #   docker compose --profile obs up -d           # + Jaeger/Prometheus/Grafana
 
@@ -42,6 +42,60 @@ services:
       MINIO_ROOT_PASSWORD: minioadmin
     ports: ["19000:9000", "19001:9001"]
     volumes: [miniodata:/data]
+
+  # ---- Kafka 异步任务（单节点 KRaft，无需 ZooKeeper） ----
+  kafka:
+    image: apache/kafka:3.9.1
+    profiles: [core, full, obs]
+    restart: unless-stopped
+    ports: ["127.0.0.1:9092:9092"]
+    environment:
+      # 与原独立容器一致，复用已有数据时保持集群 ID 和节点 ID。
+      CLUSTER_ID: "5L6g3nShT-eMCtK--X86sw"
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      # PLAINTEXT 给电脑上的 API/Worker；INTERNAL 给 Compose 内的初始化服务。
+      KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:9092,INTERNAL://0.0.0.0:19092,CONTROLLER://0.0.0.0:9093"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://localhost:9092,INTERNAL://kafka:19092"
+      # 这三个参数就是告诉 Kafka：“刚才那三个端口，全部使用明文传输（没有加密，因为是本地测试）。内部兄弟互聊用 INTERNAL，老板用 CONTROLLER。”
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "INTERNAL"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@localhost:9093"
+      #
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_DIRS: "/tmp/kraft-combined-logs"
+    volumes: [kafkadata:/tmp/kraft-combined-logs]
+    healthcheck:
+      test: ["CMD", "/opt/kafka/bin/kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 15s
+      timeout: 10s
+      start_period: 30s
+      retries: 10
+
+  # Kafka 就绪后创建 Topic；重复启动不会清空消息或重置消费进度。
+  kafka-init:
+    image: apache/kafka:3.9.1
+    profiles: [core, full, obs]
+    restart: "no"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        # 与 configs/config.yaml 的 kafka.*_topic 保持一致。
+        for topic in doc-etl doc-etl-dlq eval-run; do
+          /opt/kafka/bin/kafka-topics.sh \
+            --bootstrap-server kafka:19092 \
+            --create --if-not-exists \
+            --topic "$${topic}" \
+            --partitions 1 --replication-factor 1
+        done
 
   # ---- 检索与模型（RAG/MCP 相关集） ----
   etcd: # Milvus 依赖
@@ -116,3 +170,7 @@ volumes:
   milvusminiodata:
   ollamadata:
   grafanadata:
+  kafkadata:
+    # 复用之前 docker run 创建的数据卷，生命周期独立于 Compose。
+    name: my-agent-kafka-data
+    external: true

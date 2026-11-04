@@ -6,7 +6,7 @@ BIN_DIR := bin
 .DEFAULT_GOAL := help
 
 help:
-	@echo "make compose-core  启动 M3 核心存储（Kafka 另行启动）"
+	@echo "make compose-core  启动核心存储、Kafka 并初始化 Topic"
 	@echo "make migrate       执行升级迁移并初始化管理员"
 	@echo "make run           启动 API 服务"
 	@echo "make build         编译 API、Worker、CLI 和迁移命令"
@@ -14,7 +14,7 @@ help:
 	@echo "make run-cli       启动原项目的 CLI 入口"
 	@echo "make test          检查当前全部 Go 包"
 	@echo "make compose-down  停止核心存储，保留数据卷"
-	@echo "make compose-up    启动 full/obs 基础设施（Kafka 另行启动）"
+	@echo "make compose-up    启动 full/obs 基础设施、Kafka 并初始化 Topic"
 	@echo "make cover         运行 race 测试并生成覆盖率（需 C 工具链）"
 	@echo "make lint          运行 golangci-lint（需自行安装）"
 	@echo "make swag          生成 Swagger 文件（需自行安装 swag）"
@@ -23,7 +23,7 @@ compose-core:
 	$(DOCKER) compose -f $(COMPOSE_FILE) --profile core up -d
 
 compose-down:
-	$(DOCKER) compose -f $(COMPOSE_FILE) stop postgres redis minio etcd milvus milvus-minio
+	$(DOCKER) compose -f $(COMPOSE_FILE) stop postgres redis minio etcd milvus milvus-minio kafka
 
 migrate:
 	$(GO) run ./cmd/migrate

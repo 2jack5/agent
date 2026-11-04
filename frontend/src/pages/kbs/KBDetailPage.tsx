@@ -39,6 +39,10 @@ export function KBDetailPage() {
   const [docs, setDocs] = useState<Document[]>([]);
   const [docsLoading, setDocsLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [autoRefreshFailed, setAutoRefreshFailed] = useState(false);
+  const hasProcessingDocs = docs.some((doc) =>
+    ['pending', 'parsing', 'chunking', 'embedding'].includes(doc.status),
+  );
 
   /* ---- 删除文档确认 ---- */
   const [delDoc, setDelDoc] = useState<Document | null>(null);
@@ -57,12 +61,13 @@ export function KBDetailPage() {
 
   const pageRef = useRef<HTMLDivElement>(null);
 
-  /** 刷新文档列表（上传/删除后复用；ETL 异步，用户可点"刷新"看状态变化） */
+  /** 手动刷新及上传/删除后的刷新；后台自动更新不触发加载动画。 */
   const refreshDocs = useCallback(async () => {
     setDocsLoading(true);
     try {
       const data = await listDocs(kbId, { page: 1, page_size: 100 });
       setDocs(data.list);
+      setAutoRefreshFailed(false);
     } catch (e) {
       toast.err(errMsg(e));
     } finally {
@@ -85,6 +90,31 @@ export function KBDetailPage() {
     })();
     void refreshDocs();
   }, [kbId, validId, refreshDocs]);
+
+  // 文档处理中每隔 3 秒更新列表；结束或离开页面后停止。
+  useEffect(() => {
+    if (!validId || !hasProcessingDocs) return;
+    let active = true;
+    let timer: number;
+    const poll = async () => {
+      try {
+        const data = await listDocs(kbId, { page: 1, page_size: 100 });
+        if (!active) return;
+        setDocs(data.list);
+        setAutoRefreshFailed(false);
+        // 更新 docs 后本 effect 会重新安排下一次请求；完成时不再轮询。
+      } catch {
+        if (!active) return;
+        setAutoRefreshFailed(true);
+        timer = window.setTimeout(() => void poll(), 3000);
+      }
+    };
+    timer = window.setTimeout(() => void poll(), 3000);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [kbId, validId, docs, hasProcessingDocs]);
 
   // 页面容器入场动效（仅挂载时执行一次）
   useEffect(() => {
@@ -220,7 +250,7 @@ export function KBDetailPage() {
         <div className="mb-1 flex items-center justify-between gap-3">
           <h2 className="section-title">文档列表</h2>
           <div className="flex items-center gap-2">
-            {/* ETL 异步处理，手动刷新查看状态变化 */}
+            {/* 处理中自动更新；仍保留手动刷新入口。 */}
             <Button variant="ghost" loading={docsLoading} onClick={() => void refreshDocs()}>
               刷新
             </Button>
@@ -239,7 +269,14 @@ export function KBDetailPage() {
           </div>
         </div>
         <p className="mb-4 text-xs text-ash">
-          支持 .txt / .md / .pdf / .docx；上传后 ETL 异步处理，可点"刷新"查看状态变化
+          支持 .txt / .md / .pdf / .docx；上传后后台异步处理。
+          {hasProcessingDocs && (
+            <span className={autoRefreshFailed ? 'text-coral' : undefined}>
+              {autoRefreshFailed
+                ? ' 自动更新失败，正在重试，也可点击“刷新”。'
+                : ' 处理中每 3 秒自动更新状态。'}
+            </span>
+          )}
         </p>
 
         {docsLoading && docs.length === 0 ? (

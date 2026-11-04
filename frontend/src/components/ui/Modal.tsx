@@ -30,12 +30,15 @@ export function Modal({ open, title, onClose, children, footer, width = 'max-w-l
         { opacity: 1, y: 0, scale: 1, duration: 0.3, ease: 'power3.out' },
       );
     });
+    return () => ctx.revert();
+  }, [open]);
+
+  // 关闭回调随表单输入更新；单独绑定 Esc，避免重新播放入场动画。
+  useEffect(() => {
+    if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);
-    return () => {
-      ctx.revert();
-      window.removeEventListener('keydown', onKey);
-    };
+    return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
   if (!open) return null;
